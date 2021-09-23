@@ -1,0 +1,29 @@
+# default vesamenu.c32
+default menu.c32
+menu title PXE BOOT
+# mount -o loop nanolinux-1.3.iso nanolinux
+# label nanolinux-1.3
+#   menu label nanolinux-1.3
+#   kernel nanolinux/boot/vmlinuz
+#   append root=/dev/ram0 initrd=nanolinux/boot/core.gz
+label slitaz-3.0-xvesa.iso
+  menu label slitaz-3.0-xvesa.iso
+  linux memdisk
+  initrd slitaz-3.0-xvesa.iso
+  append iso
+label nanolinux-1.3.iso
+  menu label nanolinux-1.3.iso
+  linux memdisk
+  initrd nanolinux-1.3.iso
+  append iso
+label tinycore-9.0.iso
+  menu label tinycore-9.0.iso
+  linux memdisk
+  initrd tinycore-9.0.iso
+  append iso
+# label arch-18.lkrn
+#   menu label arch-18.lkrn
+#   linux memdisk
+#   initrd arch-18.lkrn
+#   append lkrn
+
