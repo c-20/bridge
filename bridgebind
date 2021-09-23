@@ -1,0 +1,33 @@
+Y RESOLVED
+systemctl stop systemd-resolved.service
+M $?
+Y STOPALL'('
+killall named 2>/_
+M $? ; Y ')'
+
+cfgdir="/dev/shm/bind"
+nexist $cfgdir && mkdir $cfgdir
+cfgfile="$cfgdir/named.conf"
+pidfile="$cfgdir/named.pid"
+-- > $cfgfile << --
+acl goodclients {
+  10.10.10.0/24;
+  localhost;
+};
+options {
+  directory "$cfgdir";
+  pid-file "$pidfile";
+  recursion yes;
+  allow-query { goodclients; };
+  forwarders {
+    8.8.8.8;
+    8.8.4.4;
+  };
+  forward only;
+  dnssec-validation yes;
+  auth-nxdomain no;
+  listen-on-v6 { any; };
+};
+--
+named -c $cfgfile
+C NAMEDBIND

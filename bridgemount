@@ -1,0 +1,8 @@
+# use ssh to ...
+# support mounting process ? step by step support
+
+# sharer needs samba user
+# sudo useradd -s /bin/true username
+# sudo smbpasswd -a username
+
+R- "bridgemount doesn't exist yet"

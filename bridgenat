@@ -1,0 +1,108 @@
+if on "$1" fwd ; then
+  iptables -t filter -F
+  iptables -t nat -F
+  iptables -t nat -A POSTROUTING -s 10.10.10.0/24 -j MASQUERADE
+  iptables -P INPUT ACCEPT
+  iptables -P OUTPUT ACCEPT
+  iptables -P FORWARD ACCEPT
+  M FWDNAT
+  exit 0
+fi
+
+
+mask=( 255.255.255.224 )
+maskbits=( 27 )
+snets=( 0   0  32  64  96 128 160 192 224 ) # subnet at {0:32:255}
+routs=( 0   1  33  65  97 129 161 193 225 ) # router at {^+1}
+casts=( 0  31  63  95 127 159 191 223 255 ) # broadcast at {^+30}
+umins=( 0  21  53  85 117 149 181 213 245 ) # unknown hosts at ..
+umaxs=( 0  30  62  94 126 158 190 222 254 ) #   {^-10,^-1}
+
+ifaces=""
+routers=""
+while no "$1" "" ; do
+  target="$1" && shift 1 # require *:[*/*:]*
+  index="$(- "$target" | before ':')" # require 1-8
+  iface="$(- "$target" | afterlast ':')"
+  router="$(- "$target" | beforelast ':')"
+  subnet=""
+  isint "$index" && subnet="10.10.10.${snets[$index]}"
+  isip "$index" && subnet="$index"
+  no "$subnet" && R- invalid network index or subnet
+  isip "$iface" && router="$iface" && iface=""
+  no "$router" && router="10.10.10.${routs[$index]}"
+  no "$iface" && iface="$(oddeven link0 wifi0 $index)"
+  ifaces+=" $iface"
+  routers+=" $iface:$router"
+done
+
+iptables -P INPUT DROP
+iptables -P OUTPUT DROP
+iptables -P FORWARD DROP
+iptables -F -t nat
+iptables -F -t filter
+iptables -X
+iptables -A INPUT -i lo -j ACCEPT
+iptables -A OUTPUT -o lo -j ACCEPT
+# ADSL modem:
+# pre="-A PREROUTING" - for changing src and dest
+vpntcpsrc="-p tcp --sport 1723"
+vpntcpdest="-p tcp --dport 1723" ; vpngre="-p gre"
+preroute="-A PREROUTING" ; postroute="-A POSTROUTING"
+  recv="-t filter -A INPUT" 
+  send="-t filter -A OUTPUT" ; fwd="-t filter -A FORWARD"
+accept="-j ACCEPT" ; drop="-j DROP"   ; reject="-j REJECT"
+related="-m state --state ESTABLISHED,RELATED"
+worldinterface="$(worldinterface)"
+localinterface="$(sharerelayinterface)"
+worldrecv="$recv -i $worldinterface"
+worldsend="$send -o $worldinterface"
+worldlocalfwd="$fwd -i $worldinterface -o $localinterface"
+localworldfwd="$fwd -i $localinterface -o $worldinterface"
+# ; worldfwd="$fwd -i $worldinterface"
+localrecv="$recv -i $localinterface"
+localsend="$send -o $localinterface"
+# foreach network in networks
+network="10.10.10.0/16"
+router="192.168.0.1/32"
+server="10.10.10.65/32"
+ fromrouter="-s $router"  ;  torouter="-d $router"
+fromnetwork="-s $network" ; tonetwork="-d $network"
+ fromserver="-s $server"  ;  toserver="-d $server"
+# Allow outgoing VPN connections:
+iptables $worldrecv $fromrouter $tonetwork $vpntcpsrc $related $accept
+iptables $worldrecv $fromrouter $tonetwork $vpngre $accept
+iptables $worldrecv $drop
+iptables $worldsend $fromnetwork $torouter $vpntcpdest $accept
+iptables $worldsend $fromnetwork $torouter $vpngre $accept
+iptables $worldsend $drop
+# Linux computer with network:
+# iptables $localsend -s $PPPIP $accept
+# iptables $recv -s ! $network -p tcp --dport 0:1023 $drop
+# iptables $localrecv -d $PPPIP $related $accept
+# Allow all internal communication:
+iptables $recv $fromnetwork $tonetwork $accept
+iptables $send $fromnetwork $tonetwork $accept
+# Forwarding:
+iptables $worldlocalfwd $related $accept
+iptables $localworldfwd $accept
+iptables $fwd $drop
+# iptables -A FORWARD -i ppp0 -o eth0 $related -j ACCEPT
+# iptables -A FORWARD -i eth0 -o ppp0 -j ACCEPT
+# iptables -A FORWARD -j DROP
+# Drop all else, reset counters:
+iptables -A INPUT -j DROP
+iptables -A OUTPUT -j DROP
+iptables -A FORWARD -j DROP
+iptables -Z
+
+C- NAT
+# SNAT:3
+# strict: iptables -t nat -A POSTROUTING -o ppp0 -j SNAT --to $PPPIP
+# liberal: iptables -t nat -A POSTROUTING -o ppp0 -j MASQUERADE
+# masquerade means all packets will appear to come from the proxy host
+# Redirect DNS requests:
+# iptables -t nat -A PREROUTING -d 10.2.0.1 -j DNAT --to-destination 192.168.1.10
+# iptables -t nat -A PREROUTING -d 10.2.0.2 -j DNAT --to-destination 192.168.1.10
+
+

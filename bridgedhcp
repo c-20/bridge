@@ -1,0 +1,179 @@
+# no $1 &&\
+#- bridgedhcp 1[:[torouter:]eth0][ 2[:[torouter:]wifi0][ 3:router/sn:if]]
+#- where 1-8 are /27 subnets (0- 32- 64- 96- 128- 160- 192- 224-)
+# allow 10.10.11.0:10.10.11.1/25:eth1 (128 machines) [subnet:router/mask:if]
+# netgate="$1" && shift 1
+# the opposite of bridgedhcp - which acts as link0 dhcp server
+# is dhcplink or dynamiclink - which acts as link0 dhcp client
+# no params = default params (link bridge 1, wifi bridge 2)
+if no "$*" ; then
+  bridges=""
+  link0 && bridges+=" 1" # ip range  0-31
+  wifi0 && bridges+=" 2" # ip range 32-63
+  no "$bridges" && R- no bridge interfaces link0,wifi0 && exit 1
+  $0$bridges
+  exit 0
+fi
+# else bridges=" $*" ; fi
+cfgfile="/dev/shm/dhcpd.conf"
+# only those in the hostfile will receive the PXE filename !
+hostfile="/tau/buf/lists/knownhostsISDEPRECATED"
+# M "PXE" ; G "to" ; Y "$hostfile "
+M "PXE" ; G "to" ; C "allDHCPclients"
+# and a missing bracket follows to EOF ... no mention of the line
+
+killall dhcpcd 2>/_ # prevent dhcplink-like activities
+W "[" ; C "dhcplink " ; R "off" ; W "]"
+W "[" ; Y "dhcpbridge " ; G "on" ; W "]" ; -
+# todo: a physical button to switch this
+-- > $cfgfile << --
+default-lease-time 60;
+max-lease-time 180;
+authoritative;
+option domain-name-servers 10.10.10.1;
+allow booting;
+allow bootp;
+--
+
+#ddns-update-style none;
+#allow booting;
+#allow bootp;
+## option domain-name
+## option subnet-mask
+## option broadcast-address
+## option routers 10.10.10.1, 10.10.10.33;
+#group {
+#  next-server 10.10.10.1;
+#  filename "/dev/shm/ramba/pxelinux.0";
+#  host ide {
+#    harware ethernet 00:1A:92:78:0A:C3;
+#    fixed-address 10.10.10.10;
+#  }
+#}
+
+
+# 1 = router, 10 = bootp, 21 - 30 = dhcp. 11-20 => fixed connections
+# ^ is a vector containing the value set of the previous line
+# ^^ contains the values of two lines prior, ^^^ three, and so on
+# ^1 will be arg 1 of the previous line, ^@ arg $@ and so on
+# conveniently, typing ^1 (CTRL+1) will write the previous $1 to kbd
+# { } braces in a comment define the preceding vector
+# Ending in .. causes the next comment to be a continuation of this ..
+# .. comment, and/or starting in .. causes this comment to be a continuation
+# .. of the last comment. Write secondary clauses after dot space, as normal.
+# {A,B} puts A on row 1 and B on row 2. {A B C, D E F, G H I} would be 3x3.
+# variable [is|at|=] { def } will translate a definition into the current ..
+# language, on the line, preceding the comment. If there is existing data
+# on the line, a ' ; ' will be added, preceding the definition result.
+# subnet at 1{0:32:255} -> subnets=(0 0 32 64 96 128 160 192 224)
+# router at 1{^+1} ->      routers=(0 1 33 65 97 129 161 193 225)
+mask=255.255.255.224
+maskbits=27
+snets=(0   0  32  64  96 128 160 192 224 ) # subnet at {0:32:255}
+routs=(0   1  33  65  97 129 161 193 225 ) # router at {^+1}
+casts=(0  31  63  95 127 159 191 223 255 ) # broadcast at {^+30}
+umins=(0  21  53  85 117 149 181 213 245 ) # unknown hosts at ..
+umaxs=(0  30  62  94 126 158 190 222 254 ) #   {^-10,^-1}
+# hostformat: mac ip name
+ifaces=""
+routers=""
+while no "$1" "" ; do
+  target="$1" && shift 1 # require *:[*/*:]*
+  index="$(- "$target" | before ':')" # require 1-8
+  iface="$(- "$target" | afterlast ':')"
+  router="$(- "$target" | beforelast ':')"
+  subnet=""
+  isint "$index" && subnet="10.10.10.${snets[$index]}"
+  isip "$index" && subnet="$index"
+  no "$subnet" && R- invalid network index or subnet
+  isip "$iface" && router="$iface" && iface=""
+  no "$router" && router="10.10.10.${routs[$index]}"
+  no "$iface" && iface="$(oddeven link0 wifi0 $index)"
+  ! $iface && iface="$(oddeven link1 wifi1 $index)"
+  ! $iface && R- interface $iface not found && exit 1
+  ifaces+=" $iface"
+  routers+=" $iface:$router"
+  -- >> $cfgfile << --
+subnet 10.10.10.${snets[$index]} netmask $mask {
+  option routers 10.10.10.${routs[$index]};
+  option broadcast-address 10.10.10.${casts[index]};
+--
+  hosts="$(-- $hostfile | append -l ';' | nonl)"
+  while no "$hosts" "" ; do
+    host="$(- "$hosts" | next ';')"
+    hosts="$(- "$hosts" | rest ';')"
+    hostif="$(- "$host" | next ' ' | trim)"
+# note! tab key not allowed - need to adjust next and rest (until and from?)
+    host="$(- "$host" | rest ' ')"
+    hostmac="$(- "$host" | next ' ')"
+    host="$(- "$host" | rest ' ')"
+    hostip="$(- "$host" | next ' ')"
+    host="$(- "$host" | rest ' ')"
+    hostname="$(- "$host" | next ' ')"
+    host="$(- "$host" | rest ' ')"
+    hostuser="$(- "$host" | next ' ')"
+    if on "$hostif" "$iface" ; then
+W "[" ; Y "$hostif"
+W ":" ; G "$hostname"
+W '(' ; C "$hostip"
+W "{" ; B "$hostmac"
+W "<" ; M "$hostuser"
+W- '>})]'   # wow bash u rly can't handle a bracket .....
+      -- >> $cfgfile << --
+  host $hostname {
+    hardware ethernet $hostmac;
+    fixed-address $hostip;
+    filename "pxelinux.0"; # send filename to all hosts in host list..
+--
+# set the above filename to pxelinux.1 and map to different config somehow ...
+#   so that knownhosts can access a better set of images
+#      if on "$hostuser" PXE ; then # ..not just those named PXE (tho an opt)
+#         -- >> $cfgfile << --
+#     filename "pxelinux.0"; # only send filename to known hosts...
+# --
+#      fi
+# HOW TO WRITE TO A FILE:
+      -- >> $cfgfile << --
+  }
+--
+    fi
+  done
+  -- >> $cfgfile << --
+  pool {
+    allow unknown-clients;
+    range 10.10.10.${umins[$index]} 10.10.10.${umaxs[$index]};
+    filename "pxelinux.0"; # PXE-boot any DHCP client
+  }
+}
+--
+# C-- $cfgfile
+done
+# Y- $ifaces
+# M- $routers
+
+killall dhcpd 2>/_
+while no "$routers" "" ; do
+  router="$(- "$routers" | next ' ')"
+  routers="$(- "$routers" | rest ' ')"
+  no "$router" && continue
+  routif="$(- "$router" | before ':')"
+  routaddr="$(- "$router" | after ':')"
+  # no "$routif" OR "$routaddr" && R- bad router string && exit 1
+  ifconfig $routif down
+  ifconfig $routif $routaddr/$maskbits up
+#   route add default netmask 255.255.255.0 gw $netgate wifi0 
+#   route add default netmask 255.255.255.0 gw $netgate eth0
+#   route add default gw $router1 wlan0
+# ^ move route to NAT section
+done
+dhcpd -cf $cfgfile -q$ifaces
+Y DHCP ; W [ ; M "$ifaces " ; W ]
+exit 0
+
+# elif [ "$1" = "clear" -o "$1" = "--" ] ; then
+#   echo > /var/lib/dhcp/dhcpd.leases
+#   echo "[leases cleared]"  
+# elif [ "$1" = "clarify" -o "$1" = "--+" ] ; then
+#   echo > /var/lib/dhcp/dhcpd.leases
+#   $0 +
+# fi

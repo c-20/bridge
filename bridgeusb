@@ -1,0 +1,8 @@
+if wifi usb0 exists ; then
+  if wifi usb0 enabled ; then
+    Y USB
+  else
+    dhcpcd usb0
+    on $? 0 && G USB || R USB
+  fi
+else D USB ; fi

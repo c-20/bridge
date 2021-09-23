@@ -1,0 +1,26 @@
+# dnsmasq 2>/_
+# if [ "$?" = "2" ] ; then
+killall dnsmasq 2>/_
+systemctl stop systemd-resolved.service
+cfgfile=/dev/shm/dnsmasq.conf
+-- > $cfgfile << --
+  domain-needed
+  bogus-priv
+  no-resolv
+  no-poll
+  no-hosts
+$(shareinterface >/_ &&\
+  - "  interface=$(shareinterface)" &&\
+  - "  listen-address=$(shareip)"      )
+$(relayinterface >/_ &&\
+  - "  interface=$(relayinterface)" &&\
+  - "  listen-address=$(relayip)"      )
+  server=8.8.8.8
+--
+#  -- $cfgfile | 
+dnsmasq -C $cfgfile | _
+M DNSMASQ
+
+
+# server=/example.com/192.168.0.5
+# consider ryo dns for dynamic IPs

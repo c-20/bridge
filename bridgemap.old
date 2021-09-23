@@ -1,0 +1,41 @@
+
+# map clients through firewall
+world="$1" && shift 1
+no "$world" && R- must specify world interface && exit 1
+knownhosts="/tau/buf/lists/knownhosts"
+while read -r line ; do
+  dots="$(howmany . in "$line")"
+  clns="$(howmany : in "$line")"
+  if [ "$dots" = 3 -a "$clns" = 5 ] ; then
+    ipaddr="$(before "ether" in "$line" | nospaces)"
+    hostaddr="$(after "ether" in "$line" | before " C" | nospaces)"
+    hostid="$hostaddr $ipaddr"
+    hostname="$(cat $knownhosts | grep "$hostid" | after "$hostid ")"
+#    if [ "$hostname" != "" ] ; then
+clientnip="$ipaddr"
+clientiph="${ipaddr:0:6}"
+clientmac="$hostaddr"
+if [ "$clientiph" = "10.10." ] ; then
+  accepttgt="-j dnat --to-dst $clientmac --dnat-target ACCEPT"
+  ebtables -t nat -A PREROUTING -p IPv4 -i $world --ip-dst $clientnip $accepttgt
+  ebtables -t nat -A PREROUTING -p ARP -i $world --arp-ip-dst $clientnip $accepttgt
+      genco "Mapped "
+      if [ "$hostname" = "" ] ; then
+        enco "$hostaddr" | _ :\\W 0123456789\\R abcdefABCDEF\\O
+      else
+        menco "$hostname"
+      fi
+      genco " at "
+      enco "$ipaddr" | _
+      genco " to "
+      yecho "$world"
+fi
+#    else
+#      renco "Unknown host"
+#      menco ": "
+#      echo "$hostid" | _
+#    fi
+  fi
+done << EOF
+$(arp -n)
+EOF

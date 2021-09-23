@@ -1,0 +1,8 @@
+M 'VNC('
+killall Xvnc 2>/_ && R kXVNC # close existing sessions
+defaultuser=$(defaultuser)
+Y $defaultuser
+su - $defaultuser -c "vncserver" 2>&1 | nobl | L--
+# | matchafter 'New ' | prefix ' ' | nonl | _"
+su - $defaultuser -c "vncserver -list" | grep -E '^:' | tr '\t' ' ' | prefix ' (' | suffix ')' | nonl | _
+M ')'

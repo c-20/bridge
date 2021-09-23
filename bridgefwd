@@ -1,0 +1,53 @@
+# worldif="$1" && shift 1
+# no "$worldif" && R- must specify world interface && exit 1
+# worldif="$(worldinterface)"
+# shareif="$(shareinterface)"
+# localif="$(localinterface)"
+# worldmac="$(worldmac)"
+# worldmac="$(ip link show $worldif | grep "ether ")"
+# worldmac="$(after "ether " in "$worldmac" | before " brd")"
+# no "$worldmac" && R- failed to resolve interface mac && exit 1
+srcif=""
+srcmac=""
+targetif=""
+targetmac=""
+# ipforward="/proc/sys/net/ipv4/ip_forward"
+if worldinterface >/_ ; then
+  targetif="$(worldinterface)"
+  targetmac="$(worldmac)"
+  shareif="$(shareinterface)"
+  relayif="$(relayinterface)"
+  if o "$shareif$relayif" ; then # either or both
+    W '[' ; sysctl -w net.ipv4.ip_forward=1 | __ ; W ']'
+    acceptsrc="-j snat --to-src $targetmac --snat-arp --snat-target ACCEPT"
+ #    activechain="-t filter -A FORWARD" # wrong table for SNAT
+    activechain="-t nat -A POSTROUTING"
+    # works, same for both interfaces tho... can run once ... soon:
+    #   use --src (-s) 10.10.10.0/24 ... $shareiprange and $relayiprange
+    if o "$shareif" ; then
+      ebtables $activechain -o $targetif $acceptsrc
+      G FWDSHARE ; W '[' ; G "$shareif" ; Y ' to ' ; M "$targetif" ; W ']'
+    fi
+    if o "$relayif" ; then
+      ebtables $activechain -o $targetif $acceptsrc
+      C FWDRELAY ; W '[' ; C "$relayif" ; Y ' to ' ; M "$targetif" ; W ']'
+    fi
+  fi
+else
+  R "BRIDGEFWD:NOWORLD"
+fi
+
+# could be needing to forward share (link0) to world (wifi1)
+# could be needing to forward share (wifi0) to link0 (eth)
+# could be needing to forward share (wifi0) to world (wifi1)
+
+# world -> local (incoming packets to re-send)
+# world -> share (incoming packets to distribute)
+# world -> relay (incoming packets to relay)
+# local -> world (outgoing packets to send)
+# local -> share (requires two ethernet - packets to forward)
+# local -> relay (outgoing packets to share with devices)
+# share -> world (outgoing packets to forward)
+# share -> local (requires two ethernet - packets to filter)
+# share -> relay (incoming packets to share with devices)
+# relay -> ... etc

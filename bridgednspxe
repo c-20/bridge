@@ -1,0 +1,40 @@
+# dnsmasq 2>/_
+# if [ "$?" = "2" ] ; then
+killall dnsmasq 2>/_
+systemctl stop systemd-resolved.service
+cfgfile=/dev/shm/dnsmasq.conf
+-- > $cfgfile << --
+  domain-needed
+  bogus-priv
+  no-resolv
+  no-poll
+  no-hosts
+  dhcp-range=10.10.10.11,10.10.10.30,24h
+  dhcp-option=3,10.10.10.1
+  dhcp-option=28,10.10.10.31
+  server=8.8.8.8
+  address=/doubleclick.net/127.0.0.1
+--
+# addn-hosts= 
+# expand-hosts
+#  local-service
+# local=/bla.com/
+#$(shareinterface >/_ &&\
+#  - "  interface=$(shareinterface)" &&\
+#  - "  listen-address=$(shareip)"      )
+#$(relayinterface >/_ &&\
+#  - "  interface=$(relayinterface)" &&\
+#  - "  listen-address=$(relayip)"      )
+#  dhcp-host=host,ip,24h
+# dhcp-authoritative
+# dhcp-script=/play/sound.sh add/del mac ip
+# dhcp-boot=pxelinux.0
+# enable-tftp
+# tftp-root=/tftpboot
+#  -- $cfgfile | 
+dnsmasq -C $cfgfile | _
+M DNSMASQ
+
+
+# server=/example.com/192.168.0.5
+# consider ryo dns for dynamic IPs

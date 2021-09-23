@@ -1,0 +1,59 @@
+# world="eth0"
+# local="wlan0"
+# worldif="$(worldinterface)"
+# localif="$(localinterface)"
+# shareif="$(shareinterface)"
+# worldif="eth0"
+# localif="wifi0"
+# proxy="wlan0"
+# requests to localnip come from local devices
+# map known hosts to world interface
+if shareinterface >/_ ; then
+  G "$(shareinterface)"
+  if relayinterface >/_ ; then
+    Y "$(relayinterface)"
+  else
+    R "noRELAY" ; W '!' # looking for wifi0
+    Y "try fixedwifi add wlan0 wifi0 and reboot"
+  fi
+else
+  R "noSHARE" ; W '!' # looking for link0
+  Y "try fixedwifi add eth0 link0 and reboot"
+fi
+if worldinterface >/_ ; then
+  M "$(worldinterface)"
+  wifi01="$(default wifinetdevice)"
+  myssid="$(default wifinetssid)"
+  $wifi01 link "$myssid" "$(default wifinetpass)" | nonl
+  $wifi01 join "$myssid"
+else R NoWORLD ; W '!' ; fi # no wifi connection on wifi01
+# ^ consider graceful failure of above,
+#    and wifi if no usb type decision trees
+bridgeusb # connect to usb if device is available
+if relayinterface >/_ ; then
+  bridgehap # relayinterface presumed to be wifi0
+else D NoHAP ; W '!'; fi
+if no "$1" rebridge ; then
+  bridgesamba
+fi
+-
+bridgedhcp
+bridgetftp
+bridgenat fwd # 10.10.10.32/27
+-
+bridgefwd
+bridgebind
+# bridgedns
+-
+bridgehttp
+-
+if no "$1" rebridge ; then
+  bridgevnc
+fi
+-
+# if worldinterface >/_ ; then
+# #  bridgemap # $(worldinterface)
+# D MAP
+# else D MAP ; fi
+# # ^ might need the result of bridgefwd
+

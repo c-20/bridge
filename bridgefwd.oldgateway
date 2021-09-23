@@ -1,0 +1,49 @@
+# worldif="$1" && shift 1
+# no "$worldif" && R- must specify world interface && exit 1
+# worldif="$(worldinterface)"
+# shareif="$(shareinterface)"
+# localif="$(localinterface)"
+# worldmac="$(worldmac)"
+# worldmac="$(ip link show $worldif | grep "ether ")"
+# worldmac="$(after "ether " in "$worldmac" | before " brd")"
+# no "$worldmac" && R- failed to resolve interface mac && exit 1
+srcif=""
+srcmac=""
+targetif=""
+targetmac=""
+ipforward="/proc/sys/net/ipv4/ip_forward"
+if worldinterface >/_ ; then
+  targetif="$(worldinterface)"
+  targetmac="$(worldmac)"
+  if shareinterface >/_ ; then
+    - 1 > $ipforward
+    acceptsrc="-j snat --to-src $targetmac --snat-arp --snat-target ACCEPT"
+    ebtables -t nat -A POSTROUTING -o $targetif $acceptsrc
+Y-    "(ebtables -t nat -A POSTROUTING -o $targetif $acceptsrc)"
+    G FWDSHARE
+  fi
+  if relayinterface >/_ ; then
+    - 1 > $ipforward
+    acceptsrc="-j snat --to-src $targetmac --snat-arp --snat-target ACCEPT"
+    ebtables -t nat -A POSTROUTING -o $targetif $acceptsrc
+C-    "(ebtables -t nat -A POSTROUTING -o $targetif $acceptsrc)"
+    Y FWDRELAY
+  fi
+else
+  R "BRIDGEFWD:NOWORLD"
+fi
+
+# could be needing to forward share (link0) to world (wifi1)
+# could be needing to forward share (wifi0) to link0 (eth)
+# could be needing to forward share (wifi0) to world (wifi1)
+
+# world -> local (incoming packets to re-send)
+# world -> share (incoming packets to distribute)
+# world -> relay (incoming packets to relay)
+# local -> world (outgoing packets to send)
+# local -> share (requires two ethernet - packets to forward)
+# local -> relay (outgoing packets to share with devices)
+# share -> world (outgoing packets to forward)
+# share -> local (requires two ethernet - packets to filter)
+# share -> relay (incoming packets to share with devices)
+# relay -> ... etc

@@ -1,0 +1,23 @@
+# ftpdir="/dev/shm/ramba"
+C "TFTP/PXE@$ftpdir("
+ftpdir="/T:/"
+pxeport="69"
+pidfile="/dev/shm/atftpd.pid"
+listenip="$(shareip)"
+user="$(defaultuser)"
+group="$(defaultgroup)"
+usergroup="$user.$group"
+no $user && R NOUSER && C CHECKDEFAULTUSER && exit 1
+no $group && R NOGROUP && C CHECKDEFAULTGROUP && exit 1
+no $listenip && R NOSHAREIP && C BRIDGEDHCP\? && exit 1
+nexist $ftpdir && R NORAMBA && C BRIDGESAMBA\? && exit 1
+killall atftpd 2>/_
+useripport="--user $usergroup --bind-address $listenip --port $pxeport"
+pidftpdir="--pidfile $pidfile $ftpdir"
+# Y- "atftpd --daemon $useripport $pidftpdir"
+atftpd --daemon $useripport $pidftpdir
+ret=$?
+# need to double-check that atftp is listening since it seems to fail silently
+on $ret 0 && G "ATFTPD$?" ; W "[" ; M "$ftpdir" ; W ":" ; C "$pxeport" ; W "]"
+no $ret 0 && R "ATFTPD$?fail"
+C ")"

@@ -1,0 +1,62 @@
+interface="$(relayinterface)" # or $1
+ssid="$(hostname)"
+no $interface && R- "BRIDGEHAP:NORELAY" && exit 1
+no $ssid && R- "BRIDGEHAP:NOSSID" && exit 2
+initfile="/dev/shm/$interface.hostapd.init"
+ctrlfile="/dev/shm/$interface.hostapd.ctrl"
+cfgfile="/dev/shm/$interface.hostapd.conf"
+normalcfgfile="/etc/hostapd/hostapd.conf"
+relayphrase="$(default relaypassword)"
+-- > $cfgfile << --
+logger_syslog=-1
+logger_syslog_level=0
+logger_stdout=-1
+logger_stdout_level=0
+interface=$interface
+ctrl_interface=$ctrlfile
+ctrl_interface_group=wheel
+macaddr_acl=0
+# deny_mac_file=/dev/shm/$interface.hostapd.deny
+driver=nl80211
+# driver=rtl8188
+ssid=$ssid
+# assoc_ap_addr=11:22:33:44:55:66 
+hw_mode=g
+# g = 2.4GHz, a = 5GHz
+channel=11
+max_num_sta=8
+# ieee80211n=0
+wmm_enabled=0
+# ht_capab=[HT40][SHORT-GI-20][DSSS_CCK-40]
+auth_algs=1
+ignore_broadcast_ssid=0
+ieee80211d=1
+country_code=AU
+ieee8021x=0
+wpa=1
+wpa_passphrase=$relayphrase
+wpa_key_mgmt=WPA-PSK
+wpa_pairwise=TKIP CCMP
+wpa_group_rekey=300
+--
+
+quietrelink $normalcfgfile to $cfgfile
+
+E > $initfile
+tries=0
+rtval=1
+while [ "$rtval" != 0 -a "$tries" -lt 3 ] ; do
+  killall hostapd 2>/_
+  sleep 0.3
+  cmd="hostapd -B $cfgfile"
+  hoststat="$(hostapd -B $cfgfile)"
+  rtval="$?"
+  - "$rtval <- [ $cmd ]" >> $initfile
+  - "$hoststat" >> $initfile
+  E "($(- "$hoststat" | match "fail"))" | _ -D
+#  echo "$hoststat" | grep "interface state" | _
+  if [ "$rtval" != 0 ] ; then
+    R HAP
+    tries="$(inc $tries)"
+  else M HAP ; fi
+done

@@ -1,0 +1,12 @@
+normalcfgfile="/etc/httpd/conf/httpd.conf"
+todocfgfile="/dev/shm/apachectl.conf"
+# need to store the active copy from /etc/httpd
+# then symlink /etc/httpd to the volatile config
+apachectl restart >/_
+ret=$?
+if on $ret 0 ; then
+  Y 'HTTPD(' ; W "$ret" ; Y ')'
+else
+  D 'HTTPD(' ; R "$ret" ; D ')'
+fi
+

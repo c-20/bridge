@@ -1,0 +1,376 @@
+# samba - external interface
+# todo: mount every external device in S:\folders
+# ramba - volatile interface (shared files /R:/)
+# vamba - variable file space (shared mem /V:/)
+# R: / V: - outward / inward memory
+# wamba - network interface  (web files)
+# xamba - command interface  (web commands)
+# W: / X: - client-side / server-side
+# bridgesamba adduser should add the current user
+# bridgesamba passwd allows the password to be set
+# bridgesamba nopasswd removes the current password
+normalcfgfile="/etc/samba/smb.conf"
+cfgfile="/dev/shm/samba.conf"
+guestname="$(defaultuser)"
+# rambapath="/dev/shm/ramba"
+# vambapath="/dev/shm/vamba"
+sambapath="$(default sambapath)" # external files
+rambapath="$(default rambapath)" # shared files
+vambapath="$(default vambapath)" # shared variables
+wambapath="/tau/web/http"  # unsecure clients
+xambapath="/tau/web/https" # 'secure' clients
+yambapath="/tau/web/io"    # server-side connection for clients
+# oambapath="/" # giving full OS access... maybe unwise
+sambadrive="$(default sambadrive)"
+tambadrive="$(default tambadrive)"
+rambadrive="$(default rambadrive)"
+vambadrive="$(default vambadrive)"
+wambadrive="$(default wambadrive)"
+xambadrive="$(default xambadrive)"
+yambadrive="$(default yambadrive)"
+tambapath="$tambadrive" # actual directory, not linked
+
+no $guestname && R- no defaultuser for samba guest && exit 1
+if on $1 adduser ; then
+  smbpasswd -a -n -c $cfgfile $guestname
+  on $? 0 && W "user " ; M "$guestname" ; W- " added to smbpasswd"
+  # later: use -s switch and read password from stdin
+  exit 0
+elif on $1 passwd ; then
+  smbpasswd -c $cfgfile $guestname
+  on $? 0 && W "password set for user " ; M- "$guestname"
+  exit 0
+elif on $1 nopasswd ; then
+  smbpasswd -n -c $cfgfile $guestname
+  on $? 0 && W "password removed for user " ; M- "$guestname"
+  exit 0
+fi
+logpath="/dev/shm/bridgesamba.log"
+nosamba=n # allow samba to be exluded
+# sambapath should be created by mountconnectedblockdevices
+if on "$nosamba" n ; then
+  mountconnectedblockdevices
+else
+  Y 'nomount'
+fi
+# make ramba,vamba + make them group accessible (owner unset!)
+nexist $rambapath && mkham $rambapath
+nexist $vambapath && mkham $vambapath
+# quietrelink happens after cfg section added
+
+# sambamountpath="/mnt/samba"
+# sambamountname="$(- $sambamountpath | afterlast /)" # or $(basename $sambamountpath)
+
+interfaces=""
+localinterface >/_ && interfaces+=" $(localinterface)"
+shareinterface >/_ && interfaces+=" $(shareinterface)"
+relayinterface >/_ && interfaces+=" $(relayinterface)"
+worldinterface >/_ && interfaces+=" $(worldinterface)"
+# can use specific IP addresses instead of interfaces
+no "$interfaces" && R- no samba interfaces && exit 4
+interfaces+=" lo" # expect this and one other
+
+# hosts allow = 10.10.10.
+# guest account = $guestname
+# guest account = samba
+
+-- > $cfgfile << --
+[global]
+serverstring = SAMBA
+workgroup = SAMBA
+# netbios name = SAMBA
+# interfaces =$interfaces
+guest account = $guestname
+security = user
+force user = $(defaultuser)
+force group = $(defaultgroup)
+log file = $logpath
+max log size = 10000
+load printers = no
+printing = bsd
+printcap name = /_
+disable spoolss = yes
+server max protocol = NT1
+lanman auth = yes
+ntlm auth = yes
+--
+# client max protocol = NT1
+# server min protocol = NT1
+# [fujixerox]
+# path = /dev/shm/ramba
+# printable = yes
+# writeable = no
+# create mask = 0700
+# guest ok = yes
+# printer name = fujixerox
+# print command = /bin/rm %f
+# print command = /tau/cmd/printpdf %s
+# lpq command =
+# lprm command =
+# --
+# creates local - should not do by default
+#nosamba=n
+#if on $1 nodisk ; then
+#  sambamountpath="/mnt/samba.local"
+#  M NODISK
+#else
+#  sambapartuuid="$(default sambablkuuid)"
+#  sambapartpartuuid="$(default sambablkpartuuid)"
+#  sambadiskdev=""
+#  if ! ismountpoint $sambamountpath ; then
+#    # did mean: don't mount if already mounted
+#    # now means: don't mount in an external space
+#    # maybe an external space is a good idea, but not necessary
+#R- "blockdevices ... todo: mount all"
+#    sambadiskdev="$(diskmatch $sambapartuuid $sambapartpartuuid)"
+##    for disk in sda sdb sdc sdd sde sdf sdg ; do
+##      openerr="$(fdisk -l /dev/$disk 2>&1 >/_ | matchafter "cannot open ")"
+##      o "$openerr" && continue # this disk does not exist
+##      if diskid $disk $sambadiskid ; then
+##      if sectrange $disk$sambapartix 2-1953525167 ; then
+##        sambadiskpart="$disk$sambapartix"
+##        break
+##      fi
+##    done
+#    if o $sambadiskdev ; then
+#      M SAMBADISK$sambamountpath
+#      owner="umask=0007,uid=$(userid),gid=$(groupid)"
+## Y-      mount -t ext2 -o $owner $sambadiskdev $sambamountpath
+## M- "      mount -t ext2 $sambadiskdev $sambamountpath"
+##      mount -t ext2 $sambadiskdev $sambamountpath
+#      mount -o $owner $sambadiskdev $sambamountpath
+#      res=$? ; W '[' ; on $res 0 && G 0 || R $res ; W ']'
+#      # samba config moved down to not be conditional on the mount phase
+#      no $? 0 && R- SAMBAMOUNTFAIL
+##      parts $sambadiskpart $sambamountname
+#    else
+#      R NOSAMBADEVICEat$sambamountpath
+#      nosamba=y
+##       R- DISKDEVFAIL
+#      # later: fall back to local or RAM?
+#    fi
+#  fi
+#fi
+
+# spoolpath="/mnt/spool"
+# spool in /dev/shm/spool and /dev/shm/spool.lo
+# loopmountpath="/dev/shm/samba.lo"
+# ! [ -d $sambamountpath ] && R- no samba at $sambamountpath && exit 2
+# ! [ -d $spoolpath ] && R- no spool at $spoolpath && exit 3
+# logs may want to be kept but maybe not on an SD card
+# = $ for values, =$ for space-delimited lists with preceding space
+#-------------------------------------
+if on $nosamba n ; then
+-- >> $cfgfile << --
+[samba]
+comment = Samba
+path = $sambapath
+browseable = yes
+writeable = no
+public = yes
+create mask = 0775
+directory mask = 0775
+force user = $(sambauser)
+force group = $(sambagroup)
+inherit owner = yes
+inherit permissions = yes
+follow symlinks = yes
+--
+# quietrelink in mountconnectedblockdevices
+  M "$sambadrive" # 'S:\'
+else
+  R "no$sambadrive" # 'NoS:\'
+fi
+#--------------------------------------
+-- >> $cfgfile << --
+[ramba]
+comment = Ramba
+path = $rambapath
+browseable = yes
+writeable = yes
+public = yes
+create mask = 0777
+directory mask = 0777
+force user = $(rambauser)
+force group = $(rambagroup)
+# inherit owner = yes
+# inherit permissions = yes
+follow symlinks = yes
+--
+quietrelink $rambadrive to $rambapath
+Y "$rambadrive"
+#--------------------------------------
+-- >> $cfgfile << --
+[vamba]
+comment = Vamba
+path = $vambapath
+browseable = yes
+writeable = yes
+public = yes
+create mask = 0775
+directory mask = 0775
+force user = $(rambauser)
+force group = $(rambagroup)
+inherit owner = yes
+inherit permissions = yes
+follow symlinks = yes
+--
+quietrelink $vambadrive to $vambapath
+DY "$vambadrive"
+#--------------------------------------
+-- >> $cfgfile << --
+[tamba]
+comment = Tamba
+path = $tambapath
+browseable = yes
+writeable = no
+public = yes
+create mask = 0775
+directory mask = 0775
+force user = $(rambauser)
+force group = $(rambagroup)
+inherit owner = yes
+inherit permissions = yes
+follow symlinks = yes
+--
+# quietrelink $rambadrive to $rambapath
+# tambapath is not a link ! but should be
+B "$tambadrive"
+#--------------------------------------
+# -- >> $cfgfile << --
+# [xramba]
+# comment = XRamba
+# path = $rambapath
+# browseable = yes
+# writeable = yes
+# public = yes
+# create mask = 0664
+# directory mask = 0775
+# force group = $(rambagroup)
+# inherit owner = yes
+# inherit permissions = yes
+# follow symlinks = yes
+# server max protocol = NT1
+# lanman auth = yes
+# ntlm auth = yes
+# --
+# DY XRAM
+#--------------------------------------
+# -- >> $cfgfile << --
+# [oamba]
+# comment = Oamba
+# path = $oambapath
+# browseable = yes
+# writeable = yes
+# public = yes
+# create mask = 0664
+# directory mask = 0775
+# force group = $(rambagroup)
+# inherit owner = yes
+# inherit permissions = yes
+# follow symlinks = yes
+# --
+# R OAM
+#-------------------------------------
+-- >> $cfgfile << --
+[wamba]
+comment = Wamba
+path = $wambapath
+browseable = yes
+writeable = no
+public = yes
+create mask = 0664
+directory mask = 0775
+force group = $(rambagroup)
+inherit owner = yes
+inherit permissions = yes
+follow symlinks = yes
+--
+quietrelink $wambadrive to $wambapath
+C "$wambadrive"
+#-------------------------------------
+-- >> $cfgfile << --
+[xamba]
+comment = Xamba
+path = $xambapath
+browseable = yes
+writeable = no
+public = yes
+create mask = 0664
+directory mask = 0775
+force group = $(rambagroup)
+inherit owner = yes
+inherit permissions = yes
+follow symlinks = yes
+--
+quietrelink $xambadrive to $xambapath
+G "$xambadrive"
+#-------------------------------------
+-- >> $cfgfile << --
+[yamba]
+comment = Yamba
+path = $yambapath
+browseable = yes
+writeable = no
+public = yes
+create mask = 0664
+directory mask = 0775
+force group = $(rambagroup)
+inherit owner = yes
+inherit permissions = yes
+follow symlinks = yes
+--
+quietrelink $yambadrive to $yambapath
+Y "$yambadrive"
+#-------------------------------------
+#[spool]
+# requires /etc/printcap
+# comment = Spool
+# path = $spoolpath
+# browseable = yes
+# writeable = no
+# printable = yes
+# guest ok = yes
+# --
+#if ismountpoint $loopmountpath ; then
+#  Y UN
+#  ! umount $loopmountpath 2>/_ && R CANT
+#elif [ ! -d $loopmountpath ] ; then
+#  Y MK
+#  ! mkdir $loopmountpath 2>/_ && R CANT
+#fi
+
+killall smbd 2>/_ && D ENDBA
+# ! [ -d $logpath ] && mkdir $logpath
+smbd -s $cfgfile # -l $logpath
+smbd=$?
+M SMBD
+if on "$smbd" 0 ; then
+  G NEWBA ; W '[' ; M "$interfaces " ; W ']'
+else
+  R NEWBA ; W '(' ; D "$interfaces " ; W ')'
+fi
+quietrelink $normalcfgfile to $cfgfile
+
+# if ! ismountpoint $loopmountpath ; then
+# #  sword="sword=$(my samba.key)"
+#   sword="sword=$(default sambapassword)"
+#   user="user=$guestname,pas$sword"
+#   owner="uid=$(userid),gid=$(groupid)"
+#   npath="//o/samba"
+#   mpath="$loopmountpath"
+#   M CIFS
+#   mount -t cifs -o $user,$owner $npath $mpath 2>/_
+#   on $? 0 && G SAMBA || R NOSAMBA
+# username=thisusername
+# password=thispassword
+# #  mount -t cifs $npath $mpath
+# #,$owner $npath $mpath
+# # -o $user
+# # Y-  mount -t cifs -o user=$thisusername,$owner $npath $mpath
+# #   mount -t cifs -o user=$thisusername,password=$thispassword $npath $mpath
+# else
+#   R- "loopmountmath is a mountpoint"
+# fi
+-
+exit 0

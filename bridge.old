@@ -1,0 +1,86 @@
+# bridge [network (later?)]
+if [ "$1" = "-h" ] ; then
+  hostapd -B /etc/hostapd/hostapd.conf
+  echo HAP
+  exit 0
+fi
+
+# world="eth0"
+# local="wlan0"
+world="wifi1"
+local="eth0"
+proxy="wlan0"
+# requests to localnip come from local devices
+# map known hosts to world interface
+
+worldmac="$(ip link show $world | grep "ether ")"
+worldmac="$(after "ether " in "$worldmac" | before " brd")"
+
+renco NAT
+iptables -F
+iptables -t nat -F
+iptables -t nat -A POSTROUTING -s 10.10.10.0/24 -j MASQUERADE
+iptables -P FORWARD ACCEPT
+
+yenco FWD
+echo "1" > /proc/sys/net/ipv4/ip_forward
+# ... no need for eb?!
+acceptsrc="-j snat --to-src $worldmac --snat-arp --snat-target ACCEPT"
+ebtables -t nat -A POSTROUTING -o $world $acceptsrc
+
+cenco DNS
+dnsmasq 2>/_
+if [ "$?" = "2" ] ; then
+  killall dnsmasq 2>/_
+  systemctl stop systemd-resolved.service
+  dnsmasq | _
+fi
+
+# commandify below - wifihost $interface (but interface set in hostapd.conf)
+# hostapd should start if wifi0 interface is available
+if ifconfig wifi0 >/_ 2>/_ ; then
+
+killall hostapd 2>/_
+sleep 0.1
+hoststat="$(hostapd -B /etc/hostapd/hostapd.conf)"
+rtval="$?"
+tries=0
+if [ "$rtval" = 0 ] ; then
+  mecho HAP
+  echo "$hoststat" | grep "interface state" | _
+else
+
+echo "$hoststat" | grep "interface state" | _
+while [ "$rtval" != 0 -a "$tries" -lt 3 ] ; do
+  killall hostapd 2>/_
+  sleep 0.3
+  hoststat="$(hostapd -B /etc/hostapd/hostapd.conf)"
+  rtval="$?"
+  echo "$hoststat" | grep "interface state" | _
+#  hostapd -B /etc/hostapd/hostapd.conf >/_
+#  rtval="$?"
+  if [ "$rtval" != 0 ] ; then
+    renco HAP
+    tries="$(($tries + 1))"
+  else mecho HAP ; fi
+done
+
+fi
+
+else
+  D HAP
+fi
+-
+# echo && exit 0
+
+# echo
+# exit 1 # ... uhhh ... no need to map clients?
+
+# ----------- commandify code below:
+# mapclients $ $ $
+
+# cursor ---------- see variables (only) above, see variables (only) below
+
+bridgemap $world
+
+
